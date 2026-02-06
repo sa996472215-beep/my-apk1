@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>تطبيق التذكير</title>
+
+<style>
+:root{
+  --bg:linear-gradient(135deg,#667eea,#764ba2);
+  --card:#ffffff;
+  --text:#000;
+  --accent:#4CAF50;
+}
+.dark{
+  --bg:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+  --card:#1e1e1e;
+  --text:#fff;
+}
+
+body{
+  margin:0;
+  font-family:Arial;
+  background:var(--bg);
+  color:var(--text);
+  direction:rtl;
+  min-height:100vh;
+}
+
+.topbar{
+  background:rgba(0,0,0,.25);
+  color:white;
+  padding:12px;
+  text-align:center;
+  font-size:18px;
+  position:sticky;
+  top:0;
+}
+
+.toggle{
+  position:absolute;
+  left:12px;
+  top:8px;
+  background:#000;
+  border:none;
+  width:36px;
+  height:36px;
+  border-radius:50%;
+  color:#fff;
+  cursor:pointer;
+}
+
+.container{
+  max-width:420px;
+  margin:20px auto;
+  background:var(--card);
+  padding:20px;
+  border-radius:18px;
+  box-shadow:0 10px 30px rgba(0,0,0,.4);
+}
+
+.field{
+  margin-bottom:12px;
+}
+
+.field label{
+  display:block;
+  font-size:14px;
+  margin-bottom:4px;
+}
+
+input,textarea,select,button{
+  width:100%;
+  margin:0;
+  padding:10px;
+  border-radius:10px;
+  border:1px solid #ccc;
+}
+
+button{
+  background:var(--accent);
+  color:white;
+  cursor:pointer;
+  transition:.3s;
+  margin-top:8px;
+}
+button:hover{transform:scale(1.03)}
+
+.record{background:#2196F3}
+
+.item{
+  background:rgba(0,0,0,.05);
+  padding:12px;
+  border-radius:12px;
+  margin-top:10px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+
+.dark .item{background:rgba(255,255,255,.08)}
+
+.delete{
+  background:red;
+  border:none;
+  padding:6px;
+  color:white;
+  border-radius:8px;
+  margin-left:8px;
+}
+
+.circle{
+  width:50px;
+  height:50px;
+  border-radius:50%;
+  background:conic-gradient(#4CAF50 var(--p), #ddd 0);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:11px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="topbar">
+  ⏰ Reminder App
+  <button class="toggle" id="modeBtn" onclick="toggleMode()">🌙</button>
+</div>
+
+<div class="container">
+
+  <div class="field">
+    <label>📌 اسم الموعد</label>
+    <input id="title" placeholder="ادخل اسم الموعد">
+  </div>
+
+  <div class="field">
+    <label>📅 التاريخ</label>
+    <input type="date" id="date">
+  </div>
+
+  <div class="field">
+    <label>⏰ الوقت</label>
+    <input type="time" id="time">
+  </div>
+
+  <div class="field">
+    <label>🔁 التكرار</label>
+    <select id="repeat">
+      <option value="none">بدون تكرار</option>
+      <option value="daily">يومي</option>
+      <option value="weekly">أسبوعي</option>
+    </select>
+  </div>
+
+  <div class="field">
+    <label>🎵 نغمة المنبه</label>
+    <input type="file" id="sound" accept="audio/*">
+  </div>
+
+  <button class="record" onclick="toggleRecord()">🎙 تسجيل صوت</button>
+
+  <div class="field">
+    <label>📝 الملاحظات</label>
+    <textarea id="note" placeholder="اكتب ملاحظاتك هنا"></textarea>
+  </div>
+
+  <button onclick="addReminder()">➕ إضافة الموعد</button>
+
+  <div id="list"></div>
+</div>
+
+<script>
+let reminders = JSON.parse(localStorage.getItem("reminders")) || [];
+let mode = localStorage.getItem("mode");
+const modeBtn=document.getElementById("modeBtn");
+
+if(mode==="dark"){document.body.classList.add("dark"); modeBtn.textContent="☀";}
+
+// طلب صلاحية الإشعارات
+if("Notification" in window && Notification.permission!=="granted"){
+  Notification.requestPermission();
+}
+
+function toggleMode(){
+  document.body.classList.toggle("dark");
+  let dark=document.body.classList.contains("dark");
+  modeBtn.textContent = dark ? "☀" : "🌙";
+  localStorage.setItem("mode", dark?"dark":"light");
+}
+
+const title=document.getElementById("title");
+const dateInput=document.getElementById("date");
+const timeInput=document.getElementById("time");
+const noteInput=document.getElementById("note");
+const sound=document.getElementById("sound");
+const list=document.getElementById("list");
+const repeat=document.getElementById("repeat");
+
+let recorder,chunks=[],recordedAudio=null,recording=false;
+
+async function toggleRecord(){
+  if(!recording){
+    let stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    recorder = new MediaRecorder(stream);
+    recorder.start();
+    chunks=[];
+    recorder.ondataavailable=e=>chunks.push(e.data);
+    recording=true;
+    event.target.innerText="⏹ إيقاف";
+  }else{
+    recorder.stop();
+    recorder.onstop=()=>{
+      let blob=new Blob(chunks,{type:"audio/webm"});
+      let reader=new FileReader();
+      reader.onload=()=>recordedAudio=reader.result;
+      reader.readAsDataURL(blob);
+    };
+    recording=false;
+    event.target.innerText="🎙 تسجيل صوت";
+  }
+}
+
+function addReminder(){
+  if(!title.value||!dateInput.value||!timeInput.value)
+    return alert("أدخل البيانات");
+
+  let fullTime = dateInput.value+"T"+timeInput.value;
+  let file = sound.files[0];
+  let reader = new FileReader();
+
+  reader.onload = () => {
+    let audioData = recordedAudio || reader.result;
+
+    reminders.push({
+      title:title.value,
+      time:fullTime,
+      note:noteInput.value,
+      sound:audioData,
+      repeat:repeat.value,
+      done:false
+    });
+
+    localStorage.setItem("reminders",JSON.stringify(reminders));
+    show();
+
+    // تشغيل الصوت فور الإضافة
+    if(audioData){ new Audio(audioData).play(); }
+
+    // إشعار فور الإضافة
+    if("Notification" in window && Notification.permission==="granted"){
+      new Notification("📌 تذكير جديد",{
+        body: title.value + " في " + timeInput.value,
+        icon: "https://cdn-icons-png.flaticon.com/512/2910/2910762.png"
+      });
+    }
+
+    // مسح الحقول
+    title.value=dateInput.value=timeInput.value=noteInput.value="";
+    sound.value="";
+    recordedAudio=null;
+  };
+
+  if(file) reader.readAsDataURL(file);
+  else reader.onload();
+}
+
+function show(){
+  list.innerHTML="";
+  const now = new Date();
+
+  reminders.forEach((r,i)=>{
+    const target = new Date(r.time);
+    const total = target - now;
+    const p = Math.max(0,Math.min(100,(total/3600000)*100)); // نسبة تقريبية للساعة
+
+    // تحقق من الوقت لتشغيل الصوت والإشعار
+    if(!r.done && now >= target){
+      r.done = true;
+      if(r.sound) new Audio(r.sound).play();
+      if("Notification" in window && Notification.permission==="granted"){
+        new Notification("⏰ "+r.title,{
+          body:"موعدك الآن!",
+          icon:"https://cdn-icons-png.flaticon.com/512/2910/2910762.png"
+        });
+      }
+      // تكرار
+      if(r.repeat!=="none"){
+        let next = new Date(target);
+        if(r.repeat==="daily") next.setDate(next.getDate()+1);
+        if(r.repeat==="weekly") next.setDate(next.getDate()+7);
+        r.time = next.toISOString().slice(0,16);
+        r.done = false;
+      }
+      localStorage.setItem("reminders",JSON.stringify(reminders));
+    }
+
+    list.innerHTML+=`
+      <div class="item">
+        <div>
+          <b>📌 ${r.title}</b><br>
+          ⏰ ${target.toLocaleString("ar")}<br>
+          📝 ${r.note||""}
+        </div>
+        <div class="circle" style="--p:${p}%">${Math.floor(p)}%</div>
+        <button class="delete" onclick="del(${i})">حذف</button>
+      </div>`;
+  });
+}
+
+function del(i){
+  reminders.splice(i,1);
+  localStorage.setItem("reminders",JSON.stringify(reminders));
+  show();
+}
+
+setInterval(show,1000);
+show();
+</script>
+
+</body>
+</html>
